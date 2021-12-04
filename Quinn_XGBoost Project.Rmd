@@ -1,0 +1,286 @@
+---
+title: "XGBoost Project for ADM"
+author: "Matthias Quinn"
+date: "11/08/2021"
+output: 
+  html_document: 
+    toc: yes
+    theme: cerulean
+    fig_caption: yes
+    df_print: kable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 8, fig.height = 5)
+```
+
+# Exploring and Applying XGBoost
+
+## Abstract:
+
+This project will focus on the famous XGBoost system and its application on moderate and large datasets. Starting with a history of the system, then exploring the algorithm itself, and finally ending with two applications, this project will hopefully provide a framework on which to base further research and applications.
+
+## History:
+
+From Tianqi Chen and Carlos Guestrin in March of 2014, XGBoost has been a monumental system in the field of advanced analytics and machine learning. XGBoost was initially a research project started by Tianqi Chen - and later Carlos Guestrin - at the University of Washington, who presented their paper at SIGKDD Conference in 2016. Since then, version 1.5.0 is available for public usage and has been implemented in more than 5 languages including: C++, Python, R, Java, Scala, and Julia. In addition, the system is available to all modern operating systems, including: Windows, OS X, Linux, and a variety of cloud platforms.
+
+## The XGBoost Algorithm:
+
+Gradient boosting is a machine learning technique for regression and classification problems. The sequential building process of a decision tree usually consists of two loops. The first loop is an outer loop for enumerating the leaf nodes and the second one is an inside of the outer loop that enumerates the features. Instead of sorting the observations of the node by each feature value, you can instead sort the observations first, that is enable global sorting, and then use a scan to decide the best split.
+
+The XGBoost system utilizes a few key system optimizations, including:
+
+1.  Parallelization:
+2.  Tree Pruning:
+3.  Regularization:
+
+## Application - Forest Cover Types:
+
+Given forestry data from four wilderness areas in Roosevelt National Forest, classify the patches into one of $7$ cover types, listed below:
+
+1.  Aspen
+2.  Cottonwood/Willow
+3.  Douglas-fir
+4.  Krummholz
+5.  Lodgepole Pine
+6.  Ponderosa Pine
+7.  Spruce/Fir
+
+```{r}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(nnet)
+library(xgboost)
+library(mlbench)
+```
+
+Reading in the forest cover-type dataset.
+
+```{r}
+X <- read_excel("C:/Users/miqui/OneDrive/Datasets/covtype.xlsx", 
+    sheet = "X")
+y <- read_excel("C:/Users/miqui/OneDrive/Datasets/covtype.xlsx", 
+    sheet = "y")
+```
+
+Combine the above two data frames into $1$ for easier access:
+
+```{r}
+df <- bind_cols(X, y)
+```
+
+Turn the response variable `Cover_Type` into a factor with $7$ levels.
+
+```{r}
+df$Cover_Type <- factor(df$Cover_Type)
+```
+
+## Exploratory Data Analysis:
+
++------------------------------------+-------------+---------------------------------------------------------+
+| Variable                           | Type        | Description                                             |
++====================================+=============+=========================================================+
+| Elevation                          | Numeric     | Elevation in meters                                     |
++------------------------------------+-------------+---------------------------------------------------------+
+| Aspect                             | Numeric     | Aspect in degrees azimuth                               |
++------------------------------------+-------------+---------------------------------------------------------+
+| Slope                              | Numeric     | Slope in degrees                                        |
++------------------------------------+-------------+---------------------------------------------------------+
+| Horizontal_Distance_To_Hydrology   | Numeric     | Horizontal distance to nearest surface water features   |
++------------------------------------+-------------+---------------------------------------------------------+
+| Vertical_Distance_To_Hydrology     | Numeric     | Vertical distance to nearest surface water features     |
++------------------------------------+-------------+---------------------------------------------------------+
+| Horizontal_Distance_To_Roadways    | Numeric     | Horizontal distance to the nearest roadway              |
++------------------------------------+-------------+---------------------------------------------------------+
+| Hillshade_9am                      | Numeric     | Hillshade index at 9 a.m.                               |
++------------------------------------+-------------+---------------------------------------------------------+
+| Hillshade_Noon                     | Numeric     | Hillshade index at noon                                 |
++------------------------------------+-------------+---------------------------------------------------------+
+| Hillshade_3pm                      | Numeric     | Hillshade index at 3 p.m.                               |
++------------------------------------+-------------+---------------------------------------------------------+
+| Horizontal_Distance_To_Fire_Points | Numeric     | Horizontal distance to nearest wildfire ignition points |
++------------------------------------+-------------+---------------------------------------------------------+
+| Wilderness_Area (4 binaries)       | Categorical | Wilderness area designation                             |
++------------------------------------+-------------+---------------------------------------------------------+
+| Soil_Type (40 binaries)            | Categorical | Soil type designation                                   |
++------------------------------------+-------------+---------------------------------------------------------+
+| Cover_Type (7 types)               | Categorical | Forest cover type designation                           |
++------------------------------------+-------------+---------------------------------------------------------+
+
+: Variables
+
+## Feature Engineering:
+
+It would be nice to have a name associated with each cover type.
+
+```{r}
+table(df$Cover_Type)
+```
+
+```{r}
+df <- df %>%
+  mutate(CoverName =
+           case_when(Cover_Type == 1 ~ "Spruce.fir",
+                     Cover_Type == 2 ~ "Lodgepole.Pine",
+                     Cover_Type == 3 ~ "Ponderosa.Pine",
+                     Cover_Type == 4 ~ "Cottonwood.Willow",
+                     Cover_Type == 5 ~ "Aspen",
+                     Cover_Type == 6 ~ "Douglas.fir",
+                     Cover_Type == 7 ~ "Krummholz",
+                     TRUE ~ "Other"))
+```
+
+Combining the multiple, binary wilderness area type variables into $1$.
+
+```{r}
+df <- df %>%
+  mutate(WildernessArea =
+           case_when(Wilderness_Area_0 == 1 ~ 0,
+                     Wilderness_Area_1 == 1 ~ 1,
+                     Wilderness_Area_2 == 1 ~ 2,
+                     Wilderness_Area_3 == 1 ~ 3,
+                     TRUE ~ NaN))
+table(df$WildernessArea)
+```
+
+Combining the multiple, binary soil-type variables into $1$.
+
+```{r}
+df <- df %>%
+  mutate(SoilType =
+           case_when(Soil_Type_0 == 1 ~ 0, Soil_Type_1 == 1 ~ 1,
+                     Soil_Type_2 == 1 ~ 2, Soil_Type_3 == 1 ~ 3,
+                     Soil_Type_4 == 1 ~ 4, Soil_Type_5 == 1 ~ 5,
+                     Soil_Type_6 == 1 ~ 6, Soil_Type_7 == 1 ~ 7,
+                     Soil_Type_8 == 1 ~ 8, Soil_Type_9 == 1 ~ 9,
+                     Soil_Type_10 == 1 ~ 10, Soil_Type_11 == 1 ~ 11,
+                     Soil_Type_12 == 1 ~ 12, Soil_Type_13 == 1 ~ 13,
+                     Soil_Type_14 == 1 ~ 14, Soil_Type_15 == 1 ~ 15,
+                     Soil_Type_16 == 1 ~ 16, Soil_Type_17 == 1 ~ 17,
+                     Soil_Type_18 == 1 ~ 18, Soil_Type_19 == 1 ~ 19,
+                     Soil_Type_20 == 1 ~ 20, Soil_Type_21 == 1 ~ 21,
+                     Soil_Type_22 == 1 ~ 22, Soil_Type_23 == 1 ~ 23,
+                     Soil_Type_24 == 1 ~ 24, Soil_Type_25 == 1 ~ 25,
+                     Soil_Type_26 == 1 ~ 26, Soil_Type_27 == 1 ~ 27,
+                     Soil_Type_28 == 1 ~ 28, Soil_Type_29 == 1 ~ 29,
+                     Soil_Type_30 == 1 ~ 30, Soil_Type_31 == 1 ~ 31,
+                     Soil_Type_32 == 1 ~ 32, Soil_Type_33 == 1 ~ 33,
+                     Soil_Type_34 == 1 ~ 34, Soil_Type_35 == 1 ~ 35,
+                     Soil_Type_36 == 1 ~ 36, Soil_Type_37 == 1 ~ 37,
+                     Soil_Type_38 == 1 ~ 38, Soil_Type_39 == 1 ~ 39,
+                     TRUE ~ NaN))
+table(df$SoilType)
+```
+
+```{r}
+ggplot(df, aes(x=SoilType, fill=CoverName)) + geom_bar(aes(y=(..count..)/sum(..count..))) + ggtitle('Proportion of Observations by Soil Type') + ylab('Proportion') + xlab(NULL) + theme(legend.title=element_blank(), legend.position='bottom') +
+scale_x_discrete(breaks = 1:40) + theme(text = element_text(size=16))
+```
+
+## Modeling:
+
+### Choose the variables that will be fed to the upcoming models. {#choose-the-variables-that-will-be-fed-to-the-upcoming-models.}
+
+```{r}
+df <- df %>%
+  select(Elevation, Aspect, Slope, Horizontal_Distance_To_Hydrology,
+         Vertical_Distance_To_Hydrology, Horizontal_Distance_To_Roadways,
+         Hillshade_9am, Hillshade_Noon, Hillshade_3pm, Horizontal_Distance_To_Fire_Points, WildernessArea, SoilType, Cover_Type,
+         CoverName)
+```
+
+### Split the main data frame into train-test sets: {#split-the-main-data-frame-into-train-test-sets}
+
+```{r}
+set.seed(1234)
+inTrain <- createDataPartition(df$Cover_Type,
+                                  p = .75, 
+                                  list = FALSE, 
+                                  times = 1)
+training <- df[inTrain, ]
+testing <- df[-inTrain, ]
+```
+
+### Setting up Cross-Validation: {#setting-up-cross-validation}
+
+```{r}
+trControl <- trainControl(method = "repeatedcv",
+                          repeats = 2,
+                          verboseIter = TRUE,
+                          allowParallel = TRUE,
+                          preProcOptions = c("center", "scale"),
+                          classProbs = TRUE) # For ROC calculation
+```
+
+### Initial Hyper-parameters for XGBoost: {#initial-hyper-parameters-for-xgboost}
+
+```{r}
+xgbHyperParams <- expand.grid(
+                        nrounds = 2,
+                        max_depth = c(5, 10),
+                        eta = 0.05,
+                        gamma = 0.01,
+                        colsample_bytree = 0.75,
+                        min_child_weight = 0,
+                        subsample = 0.5)
+```
+
+### Fitting a Multinomial Logistic Model: {#fitting-a-multinomial-logistic-model}
+
+The following multinomial model will take more than 15 minutes to run, so run at your own risk.
+
+```{r}
+set.seed(5678)
+multinomMod <- train(CoverName ~ Elevation,
+                 data = training,
+                 method = "multinom",
+                 metric = "Accuracy",
+                 trControl = trControl,
+                 verbose = FALSE)
+```
+
+```{r}
+multinomMod
+```
+
+### Fitting our XGBoost Model: {#fitting-our-xgboost-model}
+
+```{r}
+set.seed(1234)
+xgbMod1 <- train(CoverName ~ Elevation,
+                 data = training,
+                 method = "xgbTree",
+                 metric = "Accuracy",
+                 trControl = trControl,
+                 tuneGrid = xgbHyperParams,
+                 verbose = FALSE)
+```
+
+### Examining the Results: {#examining-the-results}
+
+```{r}
+xgbMod1
+```
+
+```{r}
+ggplot(xgbMod1)
+```
+
+## Model Comparison:
+
+```{r}
+resamps <- resamples(list(mlr = test, xgb = xgbMod1))
+summary(resamps)
+```
+
+```{r}
+xyplot(resamps, what = "BlandAltman")
+```
+
+## References: {#references}
+
+[XGBoost: A Scalable Tree Boosting System](https://arxiv.org/abs/1603.02754)
+
+[UCI: Cover Type Data set](https://archive.ics.uci.edu/ml/datasets/Covertype)
