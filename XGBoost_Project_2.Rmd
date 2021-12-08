@@ -1,0 +1,264 @@
+---
+title: "XGBoost Project for ADM"
+author: "Matthias Quinn"
+date: "11/08/2021"
+output: 
+  html_document: 
+    toc: yes
+    theme: cerulean
+    fig_caption: yes
+    df_print: kable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exploring and Applying XGBoost
+
+## Abstract
+
+This project will focus on the famous XGBoost system and its application on a moderately large dataset. Starting with a history of the system, then exploring the algorithm itself, and finally ending with an application to forest cover types, this project will hopefully provide a framework on which to base further research and applications.
+
+## 1. Introduction
+
+Tree-based methods are popular due to their superior performance on tabular data. They work by repeatedly dividing the predictor space into regions in order to make predictions for both classification and regression problems. The most basic type of tree is the decision tree. The decision tree is simple to implement and to interpret. However, it usually doesn't perform as well as other supervised methods in terms of accuracy. Bagging, boosting, and ensemble methods are all ways to improve the performance of decision trees.
+
+Boosting is a method of iteratively improving a model. One benefit of boosting is that both the bias and variance of the model is controlled, as opposed to just one. There are several popular algorithms for boosting: AdaBoost, Gradient Boosting, XGBoost, and others. One of the issues with most boosting algorithms is the computation time, which is why the XGBoost algorithm has gained so much traction over recent years.
+
+From Tianqi Chen and Carlos Guestrin in March of 2014, XGBoost has been a monumental system in the field of advanced analytics and machine learning. XGBoost was initially a research project started by Tianqi Chen - and later Carlos Guestrin - at the University of Washington, who presented their paper at SIGKDD Conference in 2016. Since then, version $1.5.0$ is available for public usage and has been implemented in more than $5$ languages including: C++, Python, R, Java, Scala, and Julia. In addition, the system is available to all modern operating systems, including: Windows, OS X, Linux, and a variety of cloud platforms.
+
+```{r, "Loading Libraries", warning=FALSE, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(xgboost)
+library(mlbench)
+```
+
+## Reading in the finalized data set:
+
+```{r, "Reading our final dataset"}
+df <- read_csv("df.csv", col_names = TRUE, progress = TRUE)
+```
+
+### Split the main data frame into train-test sets: {#split-the-main-data-frame-into-train-test-sets}
+
+```{r}
+set.seed(1234)
+inTrain <- createDataPartition(df$Cover_Type,
+                                  p = .75, 
+                                  list = FALSE, 
+                                  times = 1)
+training <- df[inTrain, ]
+testing <- df[-inTrain, ]
+
+rm(inTrain)
+
+n = 5000
+df$Class <- df$Cover_Type
+class1_ind = which(df$Class == 1)
+class2_ind = which(df$Class == 2)
+class3_ind = which(df$Class == 3)
+class4_ind = which(df$Class == 4)
+class5_ind = which(df$Class == 5)
+class6_ind = which(df$Class == 6)
+class7_ind = which(df$Class == 7)
+
+class1_samp = sample(class1_ind, min(n, length(class1_ind)), replace = F)
+class2_samp = sample(class2_ind, min(n, length(class2_ind)), replace = F)
+class3_samp = sample(class3_ind, min(n, length(class3_ind)), replace = F)
+class4_samp = sample(class4_ind, min(n, length(class4_ind)), replace = F)
+class5_samp = sample(class5_ind, min(n, length(class5_ind)), replace = F)
+class6_samp = sample(class6_ind, min(n, length(class6_ind)), replace = F)
+class7_samp = sample(class7_ind, min(n, length(class7_ind)), replace = F)
+
+indices = c(class1_samp, class2_samp, class3_samp, class4_samp, class5_samp,             class6_samp, class7_samp)
+training <- df[indices, ]
+testing <- df[-indices, ]
+```
+
+### Setting up Cross-Validation: {#setting-up-cross-validation}
+
+```{r, "Setting up Cross-validation"}
+trControl <- trainControl(method = "repeatedcv",
+                          repeats = 2,
+                          number = 5,
+                          verboseIter = TRUE,
+                          allowParallel = TRUE,
+                          preProcOptions = c("center", "scale"),
+                          classProbs = TRUE, # For ROC calculation
+                          summaryFunction = multiClassSummary,
+                          # sampling = "smote"
+                          )
+```
+
+### Setting up the Main Model Formula:
+
+```{r}
+mainFormula <- formula(CoverName ~ Elevation + Aspect + Slope + Horizontal_Distance_To_Hydrology + Vertical_Distance_To_Hydrology + Horizontal_Distance_To_Roadways + Hillshade_9am + Hillshade_Noon + Hillshade_3pm + Horizontal_Distance_To_Fire_Points + WildernessArea + EuclidDistHydro + SoilType)
+```
+
+### Fitting a LDA Model: {#fitting-a-multinomial-logistic-model}
+
+This model should be pretty fast itself.
+
+```{r, "Running the Linear Discriminant Analysis Model"}
+set.seed(5678)
+ldaMod <- train(mainFormula,
+               data = training,
+               method = "lda",
+               metric = "Accuracy",
+               trControl = trControl)
+```
+
+Examining the results:
+
+```{r}
+ldaMod
+```
+
+### Fitting our Quadratic Discriminant Analysis Model:
+
+```{r, "Running the QDA Model"}
+set.seed(1234)
+knnMod <- train(mainFormula,
+               data = training,
+               method = "knn",
+               metric = "Accuracy",
+               trControl = trControl)
+```
+
+Examining the results:
+
+```{r}
+knnMod
+```
+
+### Fitting our Multinomial Model: {#fitting-our-xgboost-model}
+
+```{r, "Running the RDA Model"}
+set.seed(1234)
+mnomMod <- train(mainFormula,
+                 data = training,
+                 method = "multinom",
+                 metric = "Accuracy",
+                 trControl = trControl,
+                 verbose = 0)
+```
+
+Examining the results:
+
+```{r}
+mnomMod
+```
+
+### Fitting a Decision Tree Model:
+
+```{r, "Decision Tree Model"}
+set.seed(1234)
+dTreeMod <- train(mainFormula,
+                 data = training,
+                 method = "rpart",
+                 metric = "Accuracy",
+                 trControl = trControl)
+```
+
+Examining the results:
+
+```{r}
+dTreeMod
+```
+
+## Model Comparison:
+
+```{r}
+resamps <- resamples(list(LDA = ldaMod, KNN = knnMod, multiNomial = mnomMod, dTree = dTreeMod))
+
+print(resamps$timings)
+```
+
+## XGBoost Model 2:
+
+```{r}
+# Subtract by 1, since multi-class starts at 0 rn.
+training$Cover_Type <- as.integer(training$Class) - 1
+testing$Cover_Type <- as.integer(testing$Class) - 1
+
+
+xTrain <- training %>%
+  select(-Cover_Type, -CoverName, -Class) %>%
+  as.matrix()
+yTrain <- training %>%
+  select(Cover_Type) %>%
+  as.matrix()
+xTest <- testing %>%
+  select(-Cover_Type, -CoverName, -Class) %>%
+  as.matrix()
+yTest <- testing %>%
+  select(Cover_Type) %>%
+  as.matrix()
+
+xgbTrain <- xgb.DMatrix(data=xTrain, label=yTrain)
+xgbTest <- xgb.DMatrix(data=xTest, label=yTest)
+```
+
+### Defining the hyper-parameters:
+
+```{r}
+# Define the parameters for multinomial classification
+numClasses = length(levels(as.factor(df$Class)))
+
+params = list(
+  booster="gbtree",
+  eta=0.001,
+  max_depth= c(10),
+  gamma=3,
+  subsample=0.75,
+  colsample_bytree=1,
+  objective="multi:softprob",
+  eval_metric = "auc",
+  num_class = numClasses
+)
+```
+
+### Training the model:
+
+```{r}
+xgbMod3 <- xgboost(data = xgbTrain,
+                   params = params,
+                   nrounds = 3)
+```
+
+```{r, "Model Training"}
+set.seed(1234)
+
+xgbMod2 <- xgb.train(
+  params = params,
+  data = xgbTrain,
+  nrounds = 10,
+  early_stopping_rounds = 2,
+  watchlist = list(val1 = xgbTrain, val2 = xgbTest),
+  verbose = 0
+)
+```
+
+### Checking the results:
+
+```{r}
+# Review the final model and results:
+xgbMod2
+```
+
+Making predictions:
+
+```{r}
+preds <- predict(knnMod, newdata = testing)
+```
+
+Evaluating model performance:
+
+```{r}
+table(testing$CoverName, preds)
+```
