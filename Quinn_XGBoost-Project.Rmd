@@ -26,9 +26,87 @@ From Tianqi Chen and Carlos Guestrin in March of 2014, XGBoost has been a monume
 
 ## The XGBoost Algorithm:
 
-## Application 1 - Adult Income:
+Gradient boosting is a machine learning technique for regression and classification problems. The sequential building process of a decision tree usually consists of two loops. The first loop is an outer loop for enumerating the leaf nodes and the second one is an inside of the outer loop that enumerates the features. Instead of sorting the observations of the node by each feature value, you can instead sort the observations first, that is enable global sorting, and then use a scan to decide the best split.
 
-## Application 2 - Forest Cover Types:
+The XGBoost system utilizes a few key system optimizations, including:
+
+1.  **Parallelization:**
+
+    -   The dataset is split into multiple, smaller subsets that are then distributed among multiple CPU cores. Each subset calculates the quantiles in parallel and then each of those data points are pulled in to form a histogram of quantiles.
+
+    -   The weights associated with each quantile is based on the prior probabilities for classification problems.
+
+2.  **Cache-aware Access:**
+
+    -   Essentially, the cached memory within the CPU is the quickest possible way to access data, considering its location in most systems. This is where the $1^{st}$ and $2^{nd}$ derivatives (gradients and hessian matrix) are stored to later calculate the scores for each node and leaf in the tree.
+
+3.  **Regularization:**
+
+    -   The algorithm includes support for both L1 and L2 regularization to prevent over-fitting.
+
+4.  **Exact Greedy Algorithm for Split Finding:**
+
+    -   The XGBoost algorithm utilizes a greedy search approach for finding the optimal splits within the subsets of data, since it is normally impossible to enumerate all of the possible tree structures available.
+
+    -   It should be noted that when dealing with very large datasets, the exact greedy algorithm falls apart since you can't access the cache-aware Hessians and gradients as efficiently.
+
+    -   A greedy algorithm is any procedure that solves a problem by taking the locally-optimal choice at each iteration or stage when asked to present a solution.
+
+------------------------------------------------------------------------
+
+<p style="color:red;font-size:160%">
+
+**Algorithm 1** *Exact Greedy Algorithm for Finding Splits*
+
+</p>
+
+------------------------------------------------------------------------
+
+1.  Let $M_{0}$ denote the *null* model, containing no predictors.
+
+2.  For \$k=0, \dots, p-1\$:
+
+    -   Consider all $p-k$ models that augment model $M_{k}$ with one additional predictor.
+
+    -   Choose the *best* among these $p-k$ models ($\min{(RSS)}$ or $\max{(R^{2})}$.
+
+3.  Select the single best model among the $M_{p}$ possible models using cross validation.
+
+------------------------------------------------------------------------
+
+Boosting fits ensemble models like the following:
+
+$$
+\Large f(x) = \sum_{m=0}^{M} f_m(x)
+$$
+
+The most common base, weak learners come from other tree algorithms, like decision trees, and the goal of the weak learner is to have high bias and low variance. However, when many of these weak learners are put together, then one gets the added benefit of having a lower bias.
+
+### Important Components for XGBoost to Succeed:
+
+Like many other boosting algorithms, XGBoost relies on 3 keys to success, namely:
+
+1.  A weak, base learner
+
+    -   Simple decision trees are used to fit the training data.
+
+2.  An additive model that reduces the number of failures
+
+    -   By parameterizing each tree that is added to the model, we reduce the residual error and approach the correct direction in the response surface. This methodology is also known as gradient descent.
+
+3.  A loss function
+
+    -   This is typically the MSE for regression problems and is usually the softmax objective function for multi-class classification problems.
+
+## Available Hyper-parameters in Different Implementations:
+
+### Python
+
+### R
+
+### Julia
+
+## Application - Forest Cover Types: {#application---forest-cover-types}
 
 Given forestry data from four wilderness areas in Roosevelt National Forest, classify the patches into one of $7$ cover types, listed below:
 
@@ -40,7 +118,7 @@ Given forestry data from four wilderness areas in Roosevelt National Forest, cla
 6.  Ponderosa Pine
 7.  Spruce/Fir
 
-```{r}
+```{r, "Library Loading"}
 library(readxl)
 library(dplyr)
 library(ggplot2)
@@ -52,7 +130,7 @@ library(mlbench)
 
 Reading in the forest cover-type dataset.
 
-```{r}
+```{r, "Data Loading"}
 X <- read_excel("C:/Users/miqui/OneDrive/Datasets/covtype.xlsx", 
     sheet = "X")
 y <- read_excel("C:/Users/miqui/OneDrive/Datasets/covtype.xlsx", 
@@ -61,7 +139,7 @@ y <- read_excel("C:/Users/miqui/OneDrive/Datasets/covtype.xlsx",
 
 Combine the above two data frames into $1$ for easier access:
 
-```{r}
+```{r, "Merging"}
 df <- bind_cols(X, y)
 ```
 
@@ -71,41 +149,27 @@ Turn the response variable `Cover_Type` into a factor with $7$ levels.
 df$Cover_Type <- factor(df$Cover_Type)
 ```
 
-## Exploratory Data Analysis:
+## Exploratory Data Analysis: {#exploratory-data-analysis}
 
-+------------------------------------+--------------+---------------------------------------------------------+
-| Variable                           | Type         | Description                                             |
-+====================================+==============+=========================================================+
-| Elevation                          | Numeric      | Elevation in meters                                     |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Aspect                             | Numeric      | Aspect in degrees azimuth                               |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Slope                              | Numeric      | Slope in degrees                                        |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Horizontal_Distance_To_Hydrology   | Numeric      | Horizontal distance to nearest surface water features   |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Vertical_Distance_To_Hydrology     | Numeric      | Vertical distance to nearest surface water features     |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Horizontal_Distance_To_Roadways    | Numeric      | Horizontal distance to the nearest roadway              |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Hillshade_9am                      | Numeric      | Hillshade index at 9 a.m.                               |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Hillshade_Noon                     | Numeric      | Hillshade index at noon                                 |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Hillshade_3pm                      | Numeric      | Hillshade index at 3 p.m.                               |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Horizontal_Distance_To_Fire_Points | Numeric      | Horizontal distance to nearest wildfire ignition points |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Wilderness_Area (4 binaries)       | Categorical  | Wilderness area designation                             |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Soil_Type (40 binaries)            | Categorical  | Soil type designation                                   |
-+------------------------------------+--------------+---------------------------------------------------------+
-| Cover_Type (7 types)               | Categorical  | Forest cover type designation                           |
-+------------------------------------+--------------+---------------------------------------------------------+
+| Variable                           | Type        | Description                                             |
+|------------------------------------|-------------|---------------------------------------------------------|
+| Elevation                          | Numeric     | Elevation in meters                                     |
+| Aspect                             | Numeric     | Aspect in degrees azimuth                               |
+| Slope                              | Numeric     | Slope in degrees                                        |
+| Horizontal_Distance_To_Hydrology   | Numeric     | Horizontal distance to nearest surface water features   |
+| Vertical_Distance_To_Hydrology     | Numeric     | Vertical distance to nearest surface water features     |
+| Horizontal_Distance_To_Roadways    | Numeric     | Horizontal distance to the nearest roadway              |
+| Hillshade_9am                      | Numeric     | Hillshade index at 9 a.m.                               |
+| Hillshade_Noon                     | Numeric     | Hillshade index at noon                                 |
+| Hillshade_3pm                      | Numeric     | Hillshade index at 3 p.m.                               |
+| Horizontal_Distance_To_Fire_Points | Numeric     | Horizontal distance to nearest wildfire ignition points |
+| Wilderness_Area (4 binaries)       | Categorical | Wilderness area designation                             |
+| Soil_Type (40 binaries)            | Categorical | Soil type designation                                   |
+| Cover_Type (7 types)               | Categorical | Forest cover type designation                           |
 
 : Variables
 
-## Feature Engineering:
+## Feature Engineering: {#feature-engineering}
 
 It would be nice to have a name associated with each cover type.
 
@@ -113,7 +177,7 @@ It would be nice to have a name associated with each cover type.
 table(df$Cover_Type)
 ```
 
-```{r}
+```{r, "Converting Cover Types"}
 df <- df %>%
   mutate(CoverName =
            case_when(Cover_Type == 1 ~ "Spruce.fir",
@@ -128,7 +192,7 @@ df <- df %>%
 
 Combining the multiple, binary wilderness area type variables into $1$.
 
-```{r}
+```{r, "Fixing Wilderness Areas"}
 df <- df %>%
   mutate(WildernessArea =
            case_when(Wilderness_Area_0 == 1 ~ 0,
@@ -141,7 +205,7 @@ table(df$WildernessArea)
 
 Combining the multiple, binary soil-type variables into $1$.
 
-```{r}
+```{r, "Fixing Soil Types"}
 df <- df %>%
   mutate(SoilType =
            case_when(Soil_Type_0 == 1 ~ 0, Soil_Type_1 == 1 ~ 1,
@@ -173,6 +237,12 @@ ggplot(df, aes(x=SoilType, fill=CoverName)) + geom_bar(aes(y=(..count..)/sum(..c
 scale_x_discrete(breaks = 1:40) + theme(text = element_text(size=16))
 ```
 
+Euclidean Distance to Hydrology:
+
+```{r}
+df$EuclidDistHydro <- (df$Horizontal_Distance_To_Hydrology ** 2 + df$Vertical_Distance_To_Hydrology ** 2) ** 0.50
+```
+
 ## Modeling:
 
 ### Choose the variables that will be fed to the upcoming models. {#choose-the-variables-that-will-be-fed-to-the-upcoming-models.}
@@ -181,7 +251,7 @@ scale_x_discrete(breaks = 1:40) + theme(text = element_text(size=16))
 df <- df %>%
   select(Elevation, Aspect, Slope, Horizontal_Distance_To_Hydrology,
          Vertical_Distance_To_Hydrology, Horizontal_Distance_To_Roadways,
-         Hillshade_9am, Hillshade_Noon, Hillshade_3pm, Horizontal_Distance_To_Fire_Points, WildernessArea, SoilType, Cover_Type,
+         Hillshade_9am, Hillshade_Noon, Hillshade_3pm, Horizontal_Distance_To_Fire_Points, WildernessArea, SoilType, EuclidDistHydro, Cover_Type,
          CoverName)
 ```
 
@@ -199,7 +269,7 @@ testing <- df[-inTrain, ]
 
 ### Setting up Cross-Validation: {#setting-up-cross-validation}
 
-```{r}
+```{r, "Setting up Cross-validation"}
 trControl <- trainControl(method = "repeatedcv",
                           repeats = 2,
                           verboseIter = TRUE,
@@ -210,7 +280,7 @@ trControl <- trainControl(method = "repeatedcv",
 
 ### Initial Hyper-parameters for XGBoost: {#initial-hyper-parameters-for-xgboost}
 
-```{r}
+```{r, "Creating the Hyperparameters"}
 xgbHyperParams <- expand.grid(
                         nrounds = 2,
                         max_depth = c(5, 10),
@@ -221,29 +291,28 @@ xgbHyperParams <- expand.grid(
                         subsample = 0.5)
 ```
 
-### Fitting a Multinomial Logistic Model:
+### Fitting a LDA Model: {#fitting-a-multinomial-logistic-model}
 
-The following multinomial model will take more than 15 minutes to run, so run at your own risk.
+This model should be pretty fast itself.
 
-```{r}
+```{r, "Running the Linear Discriminant Analysis Model"}
 set.seed(5678)
-multinomMod <- train(CoverName ~ Elevation,
-                 data = training,
-                 method = "multinom",
-                 metric = "Accuracy",
-                 trControl = trControl,
-                 verbose = FALSE)
+ldaMod <- train(CoverName ~ Elevation,
+                     data = training,
+                     method = "lda",
+                     metric = "Accuracy",
+                     trControl = trControl)
 ```
 
 ```{r}
-multinomMod
+ldaMod
 ```
 
-### Fitting our XGBoost Model:
+### Fitting our XGBoost Model: {#fitting-our-xgboost-model}
 
-```{r}
+```{r, "Running the XGBoost Model"}
 set.seed(1234)
-xgbMod1 <- train(CoverName ~ Elevation,
+xgbMod <- train(CoverName ~ Elevation,
                  data = training,
                  method = "xgbTree",
                  metric = "Accuracy",
@@ -252,20 +321,20 @@ xgbMod1 <- train(CoverName ~ Elevation,
                  verbose = FALSE)
 ```
 
-### Examining the Results:
+### Examining the Results: {#examining-the-results}
 
 ```{r}
-xgbMod1
+xgbMod
 ```
 
 ```{r}
-ggplot(xgbMod1)
+ggplot(xgbMod)
 ```
 
 ## Model Comparison:
 
 ```{r}
-resamps <- resamples(list(mlr = test, xgb = xgbMod1))
+resamps <- resamples(list(lda = ldaMod, xgb = xgbMod))
 summary(resamps)
 ```
 
@@ -273,7 +342,7 @@ summary(resamps)
 xyplot(resamps, what = "BlandAltman")
 ```
 
-## References:
+## References: {#references}
 
 [XGBoost: A Scalable Tree Boosting System](https://arxiv.org/abs/1603.02754)
 
