@@ -176,9 +176,9 @@ The forest cover type problem requires a prediction of the type of trees that ar
 
 : Table 1: Above is a summary of all of the features in the dataset. The dataset contains a total of 54 features because some of the variables are one-hot encoded, however, there are only 13 truly unique features.
 
-The data was collected from four different wilderness areas (out of a total 6 wilderness areas) within the Roosevelt National Forest in Northern Colorado. The cover type was determined by the US Forest Service Region 2 Resource Information System data. A wilderness area is an area that is relatively untouched by humans; this means that any ecological processes are the result of nature rather than forest management services. The four wilderness areas studied in Roosevelt National Forest were Neota, Rawah, Comanche, and Cache la Poudre. These four areas differ in elevation and geography, even though they are nearby, resulting in different species of trees covering the land. Neota consists mostly of spruce/fir. Rawah and Comanche are mostly lodgepole pine, with a smattering of spruce/fir and aspen. Cache la Poudre consists mostly of Ponderosa Pine, Douglas/Fir, and Cottonwood/Willow. It should be noted that approximately 85% of the observations consist of two types of classes. There are no missing values.  
+The data was collected from four different wilderness areas (out of a total 6 wilderness areas) within the Roosevelt National Forest in Northern Colorado. The cover type was determined by the US Forest Service Region 2 Resource Information System data. A wilderness area is an area that is relatively untouched by humans; this means that any ecological processes are the result of nature rather than forest management services. The four wilderness areas studied in Roosevelt National Forest were Neota, Rawah, Comanche, and Cache la Poudre. These four areas differ in elevation and geography, even though they are nearby, resulting in different species of trees covering the land. Neota consists mostly of spruce/fir. Rawah and Comanche are mostly lodgepole pine, with a smattering of spruce/fir and aspen. Cache la Poudre consists mostly of Ponderosa Pine, Douglas/Fir, and Cottonwood/Willow. It should be noted that approximately 85% of the observations consist of two types of classes. There are no missing values.  
 
-Tables 1-2 and Figure 1 show some frequency distributions of the cover types and wilderness areas.  From these, it can be seen that the dataset is dominated by the two cover types and two wilderness areas. This is attributable to the relative sizes of the wilderness areas. It is important to note the imbalance of observations as this may impact the bias of the model. The Rawah wilderness area is approximately 119.4 sq. miles; the Neota wilderness area is approximately 15.5 sq. miles; the Comanche wilderness area is approximately 104.4 sq. miles; the Cache la Poudre wilderness area is approximately 14.5 sq. miles. From Figure 1, there is a significant proportion of the total observations (approximately 20%) that are in the same soil type and cover type.  Figure 2 displays a matrix of correlation values between all of the numeric variables. No significant conclusions regarding the relationship between variables can be concluded. Figure 3 shows that elevation does a great job distinguishing between the cover types. Other variables were explored, but there were no significant patterns identified.
+Tables 1-2 and Figure 1 show some frequency distributions of the cover types and wilderness areas. From these, it can be seen that the dataset is dominated by the two cover types and two wilderness areas. This is attributable to the relative sizes of the wilderness areas. It is important to note the imbalance of observations as this may impact the bias of the model. The Rawah wilderness area is approximately 119.4 sq. miles; the Neota wilderness area is approximately 15.5 sq. miles; the Comanche wilderness area is approximately 104.4 sq. miles; the Cache la Poudre wilderness area is approximately 14.5 sq. miles. From Figure 1, there is a significant proportion of the total observations (approximately 20%) that are in the same soil type and cover type.  Figure 2 displays a matrix of correlation values between all of the numeric variables. No significant conclusions regarding the relationship between variables can be concluded. Figure 3 shows that elevation does a great job distinguishing between the cover types. Other variables were explored, but there were no significant patterns identified.
 
 | Class | Cover Type        | Frequency | Relative Frequency |
 |-------|-------------------|-----------|--------------------|
@@ -200,6 +200,30 @@ Tables 1-2 and Figure 1 show some frequency distributions of the cover types and
 | Cache la Poudre | 36968     |
 
 : Table 3: A table of wilderness area frequencies shows that approximately 88% of the observations came from two of the four areas.
+
+```{r, "Plot of Soil Types and Tree Types"}
+ggplot(df, aes(x=SoilType, fill=CoverName)) + geom_bar(aes(y=(..count..)/sum(..count..))) + ggtitle('Proportion of Observations by Soil Type') + ylab('Proportion') + xlab(NULL) + theme(legend.title=element_blank(), legend.position='bottom') +
+scale_x_discrete(breaks = 1:40) + theme(text = element_text(size=16))
+```
+
+Figure 1: A plot of proportions of cover types grown on a specific soil type shows that some soils are correlated with cover type. Soil type 28 has a huge spike due to Lodgepole Pine. The proportion is out of the total number of observations.
+
+```{r}
+library(ggcorrplot)
+#Correlation Plot
+col = c(colnames(df)[1:10], 'Class')
+d = df
+d$Class = as.numeric(df$Class)
+c = cor(d[1:1000, col])
+
+corr = round(cor(d[, col]), 1)
+ggcorrplot(c, hc.order = TRUE, type = "lower",
+           lab = TRUE) +ggtitle('Correlation Plot for Numeric Variables') + ylab('Proportion')
+```
+
+![](https://lh6.googleusercontent.com/wjc2P24BHlsbUawt-XNx4UHaHkprixBtbNdxUulua6Uq6cpd01Y-lzbWqd5FwYLHCNbIKTfvE-uDu0wAKZzDv2CkDyIJxxAlxXe_-bIs2tmjQ6kbJx7mWTrNO0SmPfwrr82kh70)
+
+Figure 2: A matrix of correlation values between all numeric variables suggests that there aren't any strong relationships with the class variable (cover type).
 
 # Methods
 
@@ -495,4 +519,10 @@ Getting the variable importance:
 ```{r}
 xgbImportances <- xgb.importance(model = xgbMod2)
 print(xgbImportances)
+```
+
+Plotting the variable importance:
+
+```{r}
+xgb.ggplot.importance(xgbImportances)
 ```
